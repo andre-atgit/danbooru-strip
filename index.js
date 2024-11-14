@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Danbooru Strip
 // @description  Strip Danbooru images with your mouse
-// @version      0.1.0
+// @version      0.1.1
 // @namespace    https://github.com/andre-atgit/danbooru-strip/
 // @match        *://danbooru.donmai.us/posts/*
 // @license      MIT
@@ -14,8 +14,15 @@
     'use strict';
 
     const strip = { isLoaded: false };
-    appendCss();
-    appendStripTags();
+    const currentPostCollection = document.getElementsByClassName('current-post');
+
+    const intervalId = setInterval(() => {
+        if (currentPostCollection.length) {
+            appendCss();
+            appendStripTags();
+            clearInterval(intervalId);
+        }
+    }, 100);
 
     async function init() {
         if (strip.isLoaded) {
