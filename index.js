@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Danbooru Strip
 // @description  Strip Danbooru images with your mouse
-// @version      0.1.1
+// @version      0.1.2
 // @namespace    https://github.com/andre-atgit/danbooru-strip/
 // @match        *://danbooru.donmai.us/posts/*
 // @license      MIT
@@ -14,41 +14,21 @@
     'use strict';
 
     const strip = { isLoaded: false };
-    const currentPostCollection = document.getElementsByClassName('current-post');
+    appendStripOnPageLoad();
 
-    const intervalId = setInterval(() => {
-        if (currentPostCollection.length) {
-            appendCss();
-            appendStripTags();
-            clearInterval(intervalId);
-        }
-    }, 100);
+    function appendStripOnPageLoad() {
+        const parentNotice = document.getElementsByClassName('post-notice-parent');
+        const childNotice = document.getElementsByClassName('post-notice-child');
+        if (!parentNotice.length && !childNotice.length) return;
 
-    async function init() {
-        if (strip.isLoaded) {
-            await fetchData();
-            loadImgs();
-            return;
-        }
-
-        strip.isLoaded = true;
-        strip.lineWidth = 100;
-        strip.isDrawing = false;
-
-        strip.undoHistory = [];
-        strip.redoHistory = [];
-
-        strip.prevX = null;
-        strip.prevY = null;
-        strip.currentX = null;
-        strip.currentY = null;
-
-        appendCanvas();
-        appendOptions();
-        await fetchData();
-        loadImgs();
-        addEvents();
-        addHotkeys();
+        const currentPost = document.getElementsByClassName('current-post');
+        const intervalId = setInterval(() => {
+            if (currentPost.length) {
+                appendCss();
+                appendStripTags();
+                clearInterval(intervalId);
+            }
+        }, 100);
     }
 
     function appendCss() {
@@ -138,10 +118,37 @@
                     evt.currentTarget.innerHTML = '<span id="strip-selected">Selected</span>';
 
                     strip.bottomLayerApiLink = apiLink;
-                    init();
+                    initCanvas();
                 };
             }
         }
+    }
+
+    async function initCanvas() {
+        if (strip.isLoaded) {
+            await fetchData();
+            loadImgs();
+            return;
+        }
+
+        strip.isLoaded = true;
+        strip.lineWidth = 100;
+        strip.isDrawing = false;
+
+        strip.undoHistory = [];
+        strip.redoHistory = [];
+
+        strip.prevX = null;
+        strip.prevY = null;
+        strip.currentX = null;
+        strip.currentY = null;
+
+        appendCanvas();
+        appendOptions();
+        await fetchData();
+        loadImgs();
+        addEvents();
+        addHotkeys();
     }
 
     function appendCanvas() {
@@ -234,20 +241,20 @@
         topImg.onload = () => {
             strip.topImage = topImg;
             if (strip.bottomImage) drawImgs();
-        }
+        };
 
         bottomImg.onload = () => {
             strip.bottomImage = bottomImg;
             if (strip.topImage) drawImgs();
-        }
+        };
     }
 
     function drawImgs() {
-        strip.cursorLayer.width = strip.bottomLayer.width = strip.topLayer.width = strip.topImage.width;
-        strip.cursorLayer.height = strip.bottomLayer.height = strip.topLayer.height = strip.topImage.height;
+        const width = strip.cursorLayer.width = strip.bottomLayer.width = strip.topLayer.width = strip.topImage.width;
+        const height = strip.cursorLayer.height = strip.bottomLayer.height = strip.topLayer.height = strip.topImage.height;
 
         strip.topCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
-        strip.bottomCtx.drawImage(strip.bottomImage, 0, 0);
+        strip.bottomCtx.drawImage(strip.bottomImage, 0, 0, width, height);
     }
 
     function addEvents() {
