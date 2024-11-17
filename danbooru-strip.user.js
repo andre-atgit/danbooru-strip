@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Danbooru Strip
 // @description  Strip Danbooru images with your mouse
-// @version      0.1.2
+// @version      0.1.3
 // @namespace    https://github.com/andre-atgit/danbooru-strip/
 // @match        *://danbooru.donmai.us/posts/*
 // @license      MIT
@@ -157,7 +157,7 @@
         <div id="strip-canvas-container">
             <canvas id="strip-bottom-layer" class="fit"></canvas>
             <canvas id="strip-top-layer" class="fit"></canvas>
-            <canvas id="strip-cursor-layer" oncontextmenu="return false" class="fit"> </canvas>
+            <canvas id="strip-cursor-layer" oncontextmenu="return false" onselectstart="return false" class="fit"> </canvas>
         </div>
         <div id="strip-full-view-container"></div>`;
 
@@ -261,7 +261,15 @@
         strip.cursorLayer.addEventListener('pointerenter', (evt) => {
             strip.prevX = strip.currentX = evt.offsetX;
             strip.prevY = strip.currentY = evt.offsetY;
-            if (evt.pressure) strip.isDrawing = true;
+
+            if (evt.pressure) {
+                strip.isDrawing = true;
+            }
+
+            if (!evt.pressure && strip.isDrawing) {
+                strip.isDrawing = false;
+                addStrokeToHistory();
+            }
         });
 
         strip.cursorLayer.addEventListener('pointermove', (evt) => {
@@ -270,20 +278,20 @@
             strip.currentX = evt.offsetX;
             strip.currentY = evt.offsetY;
             drawCursor(strip.currentX, strip.currentY);
-            if (evt.pressure) drawLine(strip.prevX, strip.prevY, strip.currentX, strip.currentY);
+            if (evt.pressure) {
+                strip.isDrawing = true;
+                drawLine(strip.prevX, strip.prevY, strip.currentX, strip.currentY)
+            };
         });
 
         strip.cursorLayer.addEventListener('pointerleave', (evt) => {
             strip.currentX = null;
             strip.currentY = null;
             clearCursor();
-            if (strip.isDrawing) {
-                strip.isDrawing = false;
-                addStrokeToHistory();
-            }
         });
 
         strip.cursorLayer.addEventListener('pointerdown', (evt) => {
+            drawCursor(strip.currentX, strip.currentY);
             strip.isDrawing = true;
             drawArc(evt.offsetX, evt.offsetY);
         });
@@ -308,22 +316,18 @@
                 case '-':
                     setLineWidth(Math.max(strip.lineWidth - 1, 1));
                     break;
-                case "'":
-                    if (evt.ctrlKey) {
-                        evt.preventDefault();
-                        toggleFullView();
-                    }
+                case 'Escape':
+                    evt.preventDefault();
+                    toggleFullView();
                     break;
                 case 'z':
-                    if (evt.ctrlKey && strip.undoHistory.length) {
+                    if (evt.ctrlKey && undo()) {
                         evt.preventDefault();
-                        undo();
                     }
                     break;
                 case 'y':
-                    if (evt.ctrlKey && strip.redoHistory.length) {
+                    if (evt.ctrlKey && redo()) {
                         evt.preventDefault();
-                        redo();
                     }
                     break;
             }
@@ -389,19 +393,31 @@
     }
 
     function undo() {
-        if (!strip.topImage || !strip.undoHistory.length) return;
+        if (strip.isDrawing) {
+            strip.isDrawing = false;
+            addStrokeToHistory();
+        }
+
+        if (!strip.undoHistory.length) return false;
         strip.redoHistory.push(strip.undoHistory.pop());
 
         strip.topCtx.globalCompositeOperation = 'source-over';
         strip.topCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
+        return true;
     }
 
     function redo() {
-        if (!strip.topImage || !strip.redoHistory.length) return;
+        if (strip.isDrawing) {
+            strip.isDrawing = false;
+            addStrokeToHistory();
+        }
+
+        if (!strip.redoHistory.length) return false;
         strip.undoHistory.push(strip.redoHistory.pop());
 
         strip.topCtx.globalCompositeOperation = 'source-over';
         strip.topCtx.drawImage(strip.undoHistory.at(-1), 0, 0);
+        return true;
     }
 
     function download() {
