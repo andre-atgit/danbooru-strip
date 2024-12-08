@@ -1,9 +1,10 @@
 // ==UserScript==
 // @name         Danbooru Strip
 // @description  Strip Danbooru images with your mouse
-// @version      0.1.3
+// @version      0.1.4
 // @namespace    https://github.com/andre-atgit/danbooru-strip/
 // @match        *://danbooru.donmai.us/posts/*
+// @icon         https://danbooru.donmai.us/favicon.svg
 // @license      MIT
 // @run-at       document-idle
 // ==/UserScript==
@@ -80,11 +81,7 @@
             transform: translate(-50%, -50%);
         }
 
-        #strip-bottom-layer {
-            position: absolute;
-        }
-
-        #strip-top-layer {
+        #strip-drawing-layer {
             position: absolute;
             z-index: 1;
         }
@@ -109,7 +106,7 @@
 
             if (previewElement.parentElement.classList.contains('current-post')) {
                 p.innerHTML = 'Current';
-                strip.topLayerApiLink = apiLink;
+                strip.topImageApiLink = apiLink;
             } else {
                 p.innerHTML = '<a>Strip!</a>';
                 p.onclick = (evt) => {
@@ -117,7 +114,7 @@
                     if (currentlySelected) currentlySelected.parentElement.innerHTML = '<a>Strip!</a>';
                     evt.currentTarget.innerHTML = '<span id="strip-selected">Selected</span>';
 
-                    strip.bottomLayerApiLink = apiLink;
+                    strip.bottomImageLink = apiLink;
                     initCanvas();
                 };
             }
@@ -155,8 +152,7 @@
         const content = document.createElement('div');
         content.innerHTML = `
         <div id="strip-canvas-container">
-            <canvas id="strip-bottom-layer" class="fit"></canvas>
-            <canvas id="strip-top-layer" class="fit"></canvas>
+            <canvas id="strip-drawing-layer" class="fit"></canvas>
             <canvas id="strip-cursor-layer" oncontextmenu="return false" onselectstart="return false" class="fit"> </canvas>
         </div>
         <div id="strip-full-view-container"></div>`;
@@ -167,12 +163,10 @@
         strip.fullViewContainer.onmousedown = (evt) => (evt.target === strip.fullViewContainer) && toggleFullView();
 
         const canvases = content.getElementsByTagName('canvas');
-        strip.bottomLayer = canvases[0];
-        strip.topLayer = canvases[1];
-        strip.cursorLayer = canvases[2];
+        strip.drawingLayer = canvases[0];
+        strip.cursorLayer = canvases[1];
 
-        strip.bottomCtx = strip.bottomLayer.getContext('2d');
-        strip.topCtx = strip.topLayer.getContext('2d');
+        strip.drawingCtx = strip.drawingLayer.getContext('2d');
         strip.cursorCtx = strip.cursorLayer.getContext('2d');
 
         const resizeNotice = document.getElementById('image-resize-notice');
@@ -193,11 +187,11 @@
         stripOptions.innerHTML = `
         <h2>Strip</h2>
         <ul>
-            <li><a class="cursor-pointer">Toggle full view</a></li>
-            <li><a class="cursor-pointer">Undo</a></li>
-            <li><a class="cursor-pointer">Redo</a></li>
+            <li><a class="cursor-pointer" title="Shortcut is esc">Toggle full view</a></li>
+            <li><a class="cursor-pointer" title="Ctrl + z">Undo</a></li>
+            <li><a class="cursor-pointer" title="Ctrl + y">Redo</a></li>
             <li><a class="cursor-pointer">Download strip</a></li>
-            <li><a class="cursor-pointer">Brush width</a></li>
+            <li><a class="cursor-pointer" title="Shortcut is + and -">Brush width</a></li>
             <li><input type="range" min="1" max="400" value="100"></li>
         </ul>`;
 
@@ -215,17 +209,17 @@
     }
 
     async function fetchData() {
-        const topLayerRequest = fetch(strip.topLayerApiLink).then((res) => res.json());
-        const bottomLayerRequest = fetch(strip.bottomLayerApiLink).then((res) => res.json());
+        const topImageRequest = fetch(strip.topImageApiLink).then((res) => res.json());
+        const bottomImageRequest = fetch(strip.bottomImageLink).then((res) => res.json());
 
-        const [topLayerData, bottomLayerData] = await Promise.all([topLayerRequest, bottomLayerRequest]);
+        const [topImageData, bottomImageData] = await Promise.all([topImageRequest, bottomImageRequest]);
         const image = document.getElementById('image');
 
-        const topVariant = topLayerData.media_asset.variants.find((variant) => variant.width === image.naturalWidth);
-        const bottomVariant = bottomLayerData.media_asset.variants.find((variant) => variant.width === image.naturalWidth);
+        const topVariant = topImageData.media_asset.variants.find((variant) => variant.width === image.naturalWidth);
+        const bottomVariant = bottomImageData.media_asset.variants.find((variant) => variant.width === image.naturalWidth);
 
-        strip.topLayerUrl = topVariant ? topVariant.url : topLayerData.file_url;
-        strip.bottomLayerUrl = bottomVariant ? bottomVariant.url : bottomLayerData.file_url;
+        strip.topImageUrl = topVariant ? topVariant.url : topImageData.file_url;
+        strip.bottomImageUrl = bottomVariant ? bottomVariant.url : bottomImageData.file_url;
     }
 
     function loadImgs() {
@@ -233,10 +227,10 @@
         const bottomImg = new Image();
 
         topImg.crossOrigin = 'anonymous';
-        topImg.src = strip.topLayerUrl;
+        topImg.src = strip.topImageUrl;
 
         bottomImg.crossOrigin = 'anonymous';
-        bottomImg.src = strip.bottomLayerUrl;
+        bottomImg.src = strip.bottomImageUrl;
 
         topImg.onload = () => {
             strip.topImage = topImg;
@@ -250,11 +244,9 @@
     }
 
     function drawImgs() {
-        const width = strip.cursorLayer.width = strip.bottomLayer.width = strip.topLayer.width = strip.topImage.width;
-        const height = strip.cursorLayer.height = strip.bottomLayer.height = strip.topLayer.height = strip.topImage.height;
-
-        strip.topCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
-        strip.bottomCtx.drawImage(strip.bottomImage, 0, 0, width, height);
+        strip.cursorLayer.width = strip.drawingLayer.width = strip.topImage.width;
+        strip.cursorLayer.height = strip.drawingLayer.height = strip.topImage.height;
+        strip.drawingCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
     }
 
     function addEvents() {
@@ -278,10 +270,15 @@
             strip.currentX = evt.offsetX;
             strip.currentY = evt.offsetY;
             drawCursor(strip.currentX, strip.currentY);
-            if (evt.pressure) {
+
+            if (evt.buttons & 1) {
                 strip.isDrawing = true;
-                drawLine(strip.prevX, strip.prevY, strip.currentX, strip.currentY)
-            };
+                drawLine(strip.prevX, strip.prevY, strip.currentX, strip.currentY, strip.bottomImage);
+            }
+            else if (evt.buttons & 2) {
+                strip.isDrawing = true;
+                drawLine(strip.prevX, strip.prevY, strip.currentX, strip.currentY, strip.topImage);
+            }
         });
 
         strip.cursorLayer.addEventListener('pointerleave', (evt) => {
@@ -292,8 +289,15 @@
 
         strip.cursorLayer.addEventListener('pointerdown', (evt) => {
             drawCursor(strip.currentX, strip.currentY);
-            strip.isDrawing = true;
-            drawArc(evt.offsetX, evt.offsetY);
+
+            if (evt.buttons & 1) {
+                strip.isDrawing = true;
+                drawArc(evt.offsetX, evt.offsetY, strip.bottomImage);
+            }
+            else if (evt.buttons & 2) {
+                strip.isDrawing = true;
+                drawArc(evt.offsetX, evt.offsetY, strip.topImage);
+            }
         });
 
         strip.cursorLayer.addEventListener('pointerup', (evt) => {
@@ -334,24 +338,30 @@
         });
     }
 
-    function drawArc(x, y) {
+    function drawArc(x, y, overlay) {
         const scale = getScale();
-        strip.topCtx.globalCompositeOperation = 'destination-out';
-        strip.topCtx.beginPath();
-        strip.topCtx.arc(x / scale, y / scale, strip.lineWidth / 2, 0, Math.PI * 2);
-        strip.topCtx.fill();
+        strip.drawingCtx.globalCompositeOperation = 'destination-out';
+        strip.drawingCtx.beginPath();
+        strip.drawingCtx.arc(x / scale, y / scale, strip.lineWidth / 2, 0, Math.PI * 2);
+        strip.drawingCtx.fill();
+
+        strip.drawingCtx.globalCompositeOperation = 'destination-over';
+        strip.drawingCtx.drawImage(overlay, 0, 0, strip.drawingLayer.width, strip.drawingLayer.height);
     }
 
-    function drawLine(x1, y1, x2, y2) {
+    function drawLine(x1, y1, x2, y2, overlay) {
         const scale = getScale();
-        strip.topCtx.globalCompositeOperation = 'destination-out';
-        strip.topCtx.beginPath();
-        strip.topCtx.lineWidth = strip.lineWidth;
-        strip.topCtx.lineJoin = 'round';
-        strip.topCtx.moveTo(x1 / scale, y1 / scale);
-        strip.topCtx.lineTo(x2 / scale, y2 / scale);
-        strip.topCtx.closePath();
-        strip.topCtx.stroke();
+        strip.drawingCtx.globalCompositeOperation = 'destination-out';
+        strip.drawingCtx.beginPath();
+        strip.drawingCtx.lineWidth = strip.lineWidth;
+        strip.drawingCtx.lineJoin = 'round';
+        strip.drawingCtx.moveTo(x1 / scale, y1 / scale);
+        strip.drawingCtx.lineTo(x2 / scale, y2 / scale);
+        strip.drawingCtx.closePath();
+        strip.drawingCtx.stroke();
+
+        strip.drawingCtx.globalCompositeOperation = 'destination-over';
+        strip.drawingCtx.drawImage(overlay, 0, 0, strip.drawingLayer.width, strip.drawingLayer.height);
     }
 
     function drawCursor(x, y) {
@@ -381,12 +391,11 @@
 
     function addStrokeToHistory() {
         const historyEntry = document.createElement('canvas');
-        historyEntry.width = strip.topLayer.width;
-        historyEntry.height  = strip.topLayer.height;
+        historyEntry.width = strip.drawingLayer.width;
+        historyEntry.height  = strip.drawingLayer.height;
 
         const context = historyEntry.getContext('2d');
-        context.drawImage(strip.bottomLayer, 0, 0);
-        context.drawImage(strip.topLayer, 0, 0);
+        context.drawImage(strip.drawingLayer, 0, 0);
 
         strip.redoHistory = [];
         strip.undoHistory.push(historyEntry);
@@ -401,8 +410,8 @@
         if (!strip.undoHistory.length) return false;
         strip.redoHistory.push(strip.undoHistory.pop());
 
-        strip.topCtx.globalCompositeOperation = 'source-over';
-        strip.topCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
+        strip.drawingCtx.globalCompositeOperation = 'source-over';
+        strip.drawingCtx.drawImage(strip.undoHistory.at(-1) || strip.topImage, 0, 0);
         return true;
     }
 
@@ -415,22 +424,14 @@
         if (!strip.redoHistory.length) return false;
         strip.undoHistory.push(strip.redoHistory.pop());
 
-        strip.topCtx.globalCompositeOperation = 'source-over';
-        strip.topCtx.drawImage(strip.undoHistory.at(-1), 0, 0);
+        strip.drawingCtx.globalCompositeOperation = 'source-over';
+        strip.drawingCtx.drawImage(strip.undoHistory.at(-1), 0, 0);
         return true;
     }
 
     function download() {
-        const downloadCanvas = document.createElement('canvas');
-        downloadCanvas.width = strip.topLayer.width;
-        downloadCanvas.height = strip.topLayer.height;
-
-        const context = downloadCanvas.getContext('2d');
-        context.drawImage(strip.bottomLayer, 0, 0);
-        context.drawImage(strip.topLayer, 0, 0);
-
         const link = document.createElement('a');
-        link.href = downloadCanvas.toDataURL('image/png');
+        link.href = strip.drawingLayer.toDataURL('image/png');
         link.download = 'strip.png';
         link.click();
     }
